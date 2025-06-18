@@ -1,0 +1,8 @@
+name: Pathfinding
+version: '${project.version}'
+main: me.stephenminer.pathfinding.Pathfinding
+api-version: '1.20'
+commands:
+  settarget:
+  spawnzomb:
+  teamplace:

@@ -2,6 +2,7 @@ package me.stephenminer.pathfinding.mobs.pathfinder;
 
 import com.google.common.collect.Sets;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -11,6 +12,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.Arrays;
 import java.util.List;
 
 public class DigNavGoal extends Goal {
@@ -19,9 +21,11 @@ public class DigNavGoal extends Goal {
     protected List<Node> path;
     protected int actionCooldown = 40;
     protected int stepIndex = 0;
+    protected int digIndex, buildIndex = 0;
     protected int breakProg = 0;
     protected int maxBreakTime = 40;
     protected boolean digging = false;
+    protected boolean moveFlag = false;
     protected int recalcCooldown = 0;
     protected Vec3 prevPos = null;
     protected int stuck = 0;
@@ -37,12 +41,14 @@ public class DigNavGoal extends Goal {
     @Override
     public void start(){
         recalcPath();
-        System.out.println(path);
+        //System.out.println(path);
         stepIndex = 0;
         prevPos = mob.position();
         stuck = 0;
         breakProg = 0;
         recalcCooldown = 0;
+        buildIndex= 0;
+        digIndex = 0;
     }
 
     @Override
@@ -64,49 +70,70 @@ public class DigNavGoal extends Goal {
         System.out.println(1);
         Node current = path.get(stepIndex);
         BlockPos pos = current.pos();
-        switch (current.action()){
-            case WALK -> {
+        BlockPos[] build = current.buildTargets();
+        BlockPos[] dig = current.digTargets();
+        int buildLength = build == null ? 0 : build.length;
+        int digLength = dig == null ? 0 : dig.length;
+        if (!moveFlag) {
+            /*
+                There are no blocks to dig or place so we may move to our destination
+             */
+            if (buildIndex >= buildLength && digIndex >= digLength) {
                 System.out.println(2);
-                boolean res = mob.getNavigation().moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.0);
-                System.out.println(mob.position().distanceToSqr(pos.getCenter()));
-                if (mob.position().distanceToSqr(pos.getCenter()) < 2)
-                    stepIndex++;
+                moveFlag = true;
+                buildIndex = 0;
+                digIndex = 0;
             }
-            case DIG -> {
-                System.out.println(3);
+            if (digIndex < digLength) {
+                System.out.println(5);
                 mob.getNavigation().stop();
-                digging = true;
                 if (actionCooldown != 0) {
                     System.out.println(9);
-                    break;
+                    return;
                 }
+                digging = true;
+                if (breakProg % 10 == 0)
+                    mob.swing(InteractionHand.MAIN_HAND);
                 if (breakProg < maxBreakTime) {
                     System.out.println(10);
-                    break;
+                    return;
                 }
                 digging = false;
                 Level level = mob.level();
-                level.destroyBlock(pos,true, mob);
+                mob.swing(InteractionHand.MAIN_HAND);
+
+                //Since digIndex < digLength, we know at this point dig isn't null
+                level.destroyBlock(dig[digIndex], true, mob);
                 breakProg = 0;
                 actionCooldown = 25;
-                stepIndex++;
+                digIndex++;
                 System.out.println(4);
             }
-            case BUILD -> {
+            if (buildIndex < buildLength) {
                 System.out.println(5);
                 mob.getNavigation().stop();
-                if (actionCooldown > 0) break;
+                if (actionCooldown > 0) return;
                 actionCooldown = 25;
                 Level level = mob.level();
-                level.setBlockAndUpdate(pos.below(), Blocks.OAK_PLANKS.defaultBlockState());
-                stepIndex++;
+                //Since buildIndex < buildLength, we know build isn't null here
+                level.setBlockAndUpdate(build[buildIndex], Blocks.OAK_PLANKS.defaultBlockState());
+                buildIndex++;
                 System.out.println(6);
             }
-
-
+        }else {
+           // System.out.println(Arrays.toString(build) + "||||" + Arrays.toString(dig));
+            boolean res = mob.getNavigation().moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.0);
+          //  System.out.println(mob.position().distanceToSqr(pos.getCenter()));
+            double distSqr = mob.position().distanceToSqr(pos.getCenter());
+            if (!res)
+            if (distSqr < 2.1) {
+                stepIndex++;
+                moveFlag = false;
+            }
         }
+
         if (path != null)
-            System.out.println("position: " + stepIndex + "/" + path.size());
+            System.out.println("type: " + current.type() + " position: " + stepIndex + "/" + path.size());
 
     }
 
@@ -114,12 +141,18 @@ public class DigNavGoal extends Goal {
     public void stop(){
         path = null;
         stepIndex = 0;
+        buildIndex = 0;
+        digIndex = 0;
+        moveFlag = false;
     }
 
 
     private void recalcPath(){
         path = pathfinder.findPath(mob.blockPosition(), targetPos);
         stepIndex = 0;
+        buildIndex = 0;
+        digIndex = 0;
+        moveFlag = false;
     }
 
 

@@ -1,6 +1,7 @@
 package me.stephenminer.pathfinding.mobs.pathfinder;
 
 import com.google.common.collect.Sets;
+import me.stephenminer.pathfinding.Pathfinding;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
@@ -9,6 +10,7 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
 
@@ -31,6 +33,7 @@ public class DigNavGoal extends Goal {
     protected int stuck = 0;
     protected final DigPathfinder pathfinder;
     protected static final int MAX_STUCK_TIME = 40; //in ticks
+    protected static final double MAX_STUCK_THRESHHOLD = 0.05;
 
     public DigNavGoal(Mob mob, Block[] blacklist){
         this.mob = mob;
@@ -92,6 +95,12 @@ public class DigNavGoal extends Goal {
                     return;
                 }
                 digging = true;
+                BlockState state = mob.level().getBlockState(dig[digIndex]);
+                if (!pathfinder.canDig(state)) {
+                    System.out.println("RECALCULATING PATH");
+                    recalcPath();
+                    return;
+                }
                 if (breakProg % 10 == 0)
                     mob.swing(InteractionHand.MAIN_HAND);
                 if (breakProg < maxBreakTime) {
@@ -107,6 +116,7 @@ public class DigNavGoal extends Goal {
                 breakProg = 0;
                 actionCooldown = 25;
                 digIndex++;
+                stuck = 0;
                 System.out.println(4);
             }
             if (buildIndex < buildLength) {
@@ -118,6 +128,7 @@ public class DigNavGoal extends Goal {
                 //Since buildIndex < buildLength, we know build isn't null here
                 level.setBlockAndUpdate(build[buildIndex], Blocks.OAK_PLANKS.defaultBlockState());
                 buildIndex++;
+                stuck = 0;
                 System.out.println(6);
             }
         }else {
@@ -125,16 +136,23 @@ public class DigNavGoal extends Goal {
             boolean res = mob.getNavigation().moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.0);
           //  System.out.println(mob.position().distanceToSqr(pos.getCenter()));
             double distSqr = mob.position().distanceToSqr(pos.getCenter());
-            if (!res)
+            if (mob.position().distanceToSqr(prevPos) < MAX_STUCK_THRESHHOLD){
+                stuck++;
+            }else stuck = 0;
             if (distSqr < 2.1) {
                 stepIndex++;
                 moveFlag = false;
+                stuck = 0;
             }
         }
-
+        if (stuck >= MAX_STUCK_TIME){
+            System.out.println("RECALCULATING PATH");
+            recalcPath();
+            stuck = 0;
+        }
         if (path != null)
             System.out.println("type: " + current.type() + " position: " + stepIndex + "/" + path.size());
-
+        prevPos = mob.position();
     }
 
     @Override
@@ -152,6 +170,7 @@ public class DigNavGoal extends Goal {
         stepIndex = 0;
         buildIndex = 0;
         digIndex = 0;
+        stuck = 0;
         moveFlag = false;
     }
 

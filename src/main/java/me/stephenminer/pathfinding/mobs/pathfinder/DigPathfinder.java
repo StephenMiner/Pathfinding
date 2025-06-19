@@ -1,10 +1,12 @@
 package me.stephenminer.pathfinding.mobs.pathfinder;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import org.bukkit.Bukkit;
 
 import java.util.*;
 
@@ -13,17 +15,21 @@ public class DigPathfinder {
     private final int maxFallDist;
     private final Set<Block> blacklist;
 
+    private final float walkCost, buildCost, digCost;
     public DigPathfinder(Level world, int maxFallDist, Set<Block> blacklist){
         this.world = world;
         this.maxFallDist = maxFallDist;
         this.blacklist = blacklist;
+        this.walkCost = 1.0f;
+        this.buildCost = 3.0f;
+        this.digCost = 4.5f;
     }
 
 
     public List<Node> findPath(BlockPos start, BlockPos goal){
-        PriorityQueue<Node> open = new PriorityQueue(Comparator.comparingDouble(Node::totalCost));
+        PriorityQueue<Node> open = new PriorityQueue<>(Comparator.comparingDouble(Node::totalCost));
         Map<BlockPos, Node> visited = new HashMap<>();
-        Node head = new Node(start, null, 0, 0, Node.MoveType.WALK);
+        Node head = new Node(start, null, 0, 0,null, null, '.');
         open.add(head);
         while (!open.isEmpty()){
             Node current = open.poll();
@@ -38,6 +44,7 @@ public class DigPathfinder {
             if (current.pos().equals(goal)) {
                 return reconstructPath(current);
             }
+            BlockPos currentAboveHead = current.pos().above().above();
 
             BlockPos[] neighbors = getNeighbors(current.pos());
             for (BlockPos pos : neighbors){
@@ -48,28 +55,74 @@ public class DigPathfinder {
                 BlockState aboveState = world.getBlockState(above); //head position
                 BlockState belowState = world.getBlockState(below); //floor position
 
-                Node.MoveType action;
+                int dy = pos.getY() - current.pos().getY();
+                char type;
                 float cost;
-
+                BlockPos[] digTargets = null;
+                BlockPos[] buildTargets = null;
+                float extra = 0.0f;
                 if (walkable(aboveState) && isSolid(below, belowState) && walkable(state)){
-                    //There are no obstructions to us walking
-                    action = Node.MoveType.WALK;
-                    cost = 1.0f;
+                    BlockPos extraPos = digExtraCeiling(dy, current.pos(), pos);
+                    if (extraPos != null){
+                        if (!canDig(world.getBlockState(extraPos))) continue;
+                        cost = 4.5f;
+                        digTargets = new BlockPos[]{extraPos};
+                        type = 'b';
+                    } else {
+                        //There are no obstructions to us walking
+                        cost = 1.0f;
+                        type = 'a';
+                    }
                 }else if (walkable(state) && walkable(aboveState) && canBridge(belowState)){
+                    int dx = current.pos().getX() - pos.getX();
+                    int dz = current.pos().getZ() - pos.getZ();
+                    if (dx == 0 && dz == 0){
+                        System.out.println("NERD-POLE");
+                        continue;
+                    }
+                    BlockPos extraPos = digExtraCeiling(dy, current.pos(),pos);
+
+                    if (extraPos != null){
+                        if (!canDig(world.getBlockState(extraPos))) continue;
+                        extra = 4.5f;
+                        digTargets = new BlockPos[]{extraPos};
+                        type = 'g';
+                    }
                     //The area in front of us is passable, but we need to create a platform
-                    action = Node.MoveType.BUILD;
-                    cost = 2.5f;
-                }else if ((walkable(state) && canDig(aboveState)) || (walkable(aboveState) && canDig(state))){
-                    //In a 2 block space at the feet and head, we only need to dig one block (at the foot or at the head)
-                    action = Node.MoveType.DIG;
-                    cost = 4.0f;
+                    cost = extra + 3.0f;
+                    buildTargets = new BlockPos[]{below};
+                    type = 'c';
+                }else if (isSolid(below, belowState) && walkable(state) && canDig(aboveState)){
+                    //In a 2 block space at the feet and head, we only need to dig the one at our head
+                    BlockPos digCeil = digExtraCeiling(dy, current.pos(), pos);
+                    if (digCeil != null && !canDig(world.getBlockState(digCeil))) continue;
+                    digTargets = digCeil == null ? new BlockPos[]{above} : new BlockPos[]{above, digCeil};
+                    cost = digCeil == null ? 4.5f : 6f;
+                    type = 'd';
+
+                }else if (walkable(aboveState) && canDig(state)){
+                    BlockPos digCeil = digExtraCeiling(dy, current.pos(), pos);
+                    if (digCeil != null && !canDig(world.getBlockState(digCeil))) continue;
+                    digTargets = digCeil == null ? new BlockPos[]{pos} : new BlockPos[]{pos, digCeil};
+                    cost = digCeil == null ? 4.5f : 6f;
+                    type = 'e';
                 }else if (canDig(state) && canDig(aboveState)){
                     //In a 2 block space at the feet and head, we must dig both blocks (both at the feet and the head)
-                    action = Node.MoveType.DIG;
-                    cost = 5.0f;
+                    BlockPos digCeil = digExtraCeiling(dy, current.pos(), pos);
+                    if (digCeil != null && !canDig(world.getBlockState(digCeil))) continue;
+                    digTargets = digCeil == null ? new BlockPos[]{pos, above} : new BlockPos[]{pos, above, digCeil};
+                    cost = digCeil == null ? 6f : 8f;
+                    type = 'f';
                 } else {
                     //We found no valid action for this neighbor
                     continue;
+                }
+
+                if (type == 'd' || type == 'e' || type == 'f'){
+                    if (canBridge(belowState)){
+                        buildTargets = new BlockPos[]{below};
+                        cost += 1.0f;
+                    }
                 }
                 double moveCost = current.moveCost() + cost;
                 /*
@@ -81,8 +134,8 @@ public class DigPathfinder {
 
                 if (!visited.containsKey(pos) || moveCost < visited.get(pos).moveCost()){
                     double estCost = manhattanDist(pos,goal);
-                    Node node = new Node(pos, current, moveCost, estCost, action);
-                    visited.put(pos,node);
+                    Node node = new Node(pos, current, moveCost, estCost, buildTargets, digTargets, type);
+                    visited.put(pos, node);
                     open.add(node);
                 }
 
@@ -92,6 +145,24 @@ public class DigPathfinder {
         return null;
     }
 
+    /**
+     * Gets the position of the block that we will need to dig out in order to reach
+     * the specified future position
+     * @param dy the difference in y-levels between the future position and current position
+     * @param current where we currently are (as defined by our pathfinder)
+     * @param future where we are trying to go next (as defined by our pathfinder)
+     * @return A BlockPosition containing the position of the block we need to dig to allow us to
+     *         to reach the future position. Checks cases for stairs only. Returns null if no digging needed
+     */
+    private BlockPos digExtraCeiling(int dy, BlockPos current, BlockPos future){
+        BlockPos pos = null;
+        if (dy >= 1 && !walkable(world.getBlockState(current.above().above()))){
+            pos = current.above().above();
+        }else if (dy <= -1 && !walkable(world.getBlockState(future.above().above()))){
+            pos = future.above().above();
+        }
+        return pos;
+    }
 
     /**
      * Constructs a path based on a Node traversing the parent nodes inserting them
@@ -132,6 +203,23 @@ public class DigPathfinder {
         positions[12] = pos.south().below();
         positions[13] = pos.west().below();
         return positions;
+    }
+
+
+    private boolean blockExposed(BlockPos pos){
+        BlockPos[] check = new BlockPos[]{
+                pos.north(),
+                pos.east(),
+                pos.south(),
+                pos.west(),
+                pos.above(),
+                pos.below()
+        };
+        for (BlockPos neighbor : check){
+            BlockState state = world.getBlockState(neighbor);
+            if (walkable(state)) return true;
+        }
+        return false;
     }
 
 

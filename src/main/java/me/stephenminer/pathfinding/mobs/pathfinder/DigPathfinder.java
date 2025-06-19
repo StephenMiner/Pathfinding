@@ -228,23 +228,23 @@ public class DigPathfinder {
     }
 
 
-    private boolean walkable(BlockState state){
+    public boolean walkable(BlockState state){
         return state.isAir() || state.canBeReplaced();
     }
 
-    private boolean isSolid(BlockPos pos, BlockState state){
+    public boolean isSolid(BlockPos pos, BlockState state){
         return !state.isAir() && !state.getCollisionShape(world, pos).isEmpty();
     }
 
-    private boolean canDig(BlockState state){
+    public boolean canDig(BlockState state){
         return !blacklist.contains(state.getBlock()) && !state.isAir() && !liquid(state);
     }
 
-    private boolean liquid(BlockState state){
+    public boolean liquid(BlockState state){
         return state.is(Blocks.WATER) || state.is(Blocks.LAVA);
     }
 
-    private boolean canBridge(BlockState state){
+    public boolean canBridge(BlockState state){
         return state.isAir() || state.canBeReplaced() || liquid(state);
     }
 

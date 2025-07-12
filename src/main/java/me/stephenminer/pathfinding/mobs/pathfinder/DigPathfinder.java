@@ -1,12 +1,10 @@
 package me.stephenminer.pathfinding.mobs.pathfinder;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import org.bukkit.Bukkit;
 
 import java.util.*;
 
@@ -24,6 +22,8 @@ public class DigPathfinder {
         this.buildCost = 3.0f;
         this.digCost = 4.5f;
     }
+
+
 
 
     public List<Node> findPath(BlockPos start, BlockPos goal){
@@ -76,7 +76,7 @@ public class DigPathfinder {
                 }else if (walkable(state) && walkable(aboveState) && canBridge(belowState)){
                     int dx = current.pos().getX() - pos.getX();
                     int dz = current.pos().getZ() - pos.getZ();
-                    if (dx == 0 && dz == 0){
+                    if (dy != 0 && dx == 0 && dz == 0){
                         System.out.println("NERD-POLE");
                         continue;
                     }
@@ -178,30 +178,56 @@ public class DigPathfinder {
             node = node.parent();
         }
         return path;
+        //return smoothPath(path);
+    }
+
+    /**
+     * Attempts to smooth out the provide path nodes. Meaning that nodes in sequence that have no dig or build order will be ignored
+     * until either the end of the path is found or a node with a dig or build order is found.
+     * This is to hopefully mitigate the clunky-ish movement we had beforehand
+     * @param path a valid path of nodes to traverse stored in a list
+     * @return An ArrayList contained a smoothed out version of the provided path
+     */
+    //walk -> walk -> dig -> dig -> build -> walk -> dig
+    public List<Node> smoothPath(List<Node> path){
+        if (path.size() < 2) return path; // if < 2 than either no path or 1 node, nothing to smooth out
+        List<Node> out = new ArrayList<>();
+        Iterator<Node> nodes = path.iterator();
+        Node current = nodes.next();
+        while (nodes.hasNext()){
+            Node next = nodes.next();
+            if ((current.buildTargets() != null || current.digTargets() != null) ||
+                    (next.buildTargets() != null || next.digTargets() != null)) {
+                out.add(current);
+            }
+            current = next;
+        }
+        out.add(current);
+        return out;
     }
 
 
 
 
     private BlockPos[] getNeighbors(BlockPos pos){
-        BlockPos[] positions = new BlockPos[14];
+        BlockPos[] positions = new BlockPos[12];
         positions[0] = pos.north();
         positions[1] = pos.east();
         positions[2] = pos.south();
         positions[3] = pos.west();
 
-        positions[4] = pos.above();
-        positions[5] = pos.below();
+       // positions[4] = pos.above();
+       // positions[5] = pos.below();
 
-        positions[6] = pos.north().above();
-        positions[7] = pos.east().above();
-        positions[8] = pos.west().above();
-        positions[9] = pos.south().above();
+        positions[4] = pos.north().above();
+        positions[5] = pos.east().above();
+        positions[6] = pos.west().above();
+        positions[7] = pos.south().above();
 
-        positions[10] = pos.north().below();
-        positions[11] = pos.east().below();
-        positions[12] = pos.south().below();
-        positions[13] = pos.west().below();
+        positions[8] = pos.north().below();
+        positions[9] = pos.east().below();
+        positions[10] = pos.south().below();
+        positions[11] = pos.west().below();
         return positions;
     }
 

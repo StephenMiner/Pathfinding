@@ -177,8 +177,8 @@ public class DigPathfinder {
             path.addFirst(node);
             node = node.parent();
         }
-        return path;
-        //return smoothPath(path);
+        //return path;
+        return smoothPath(path);
     }
 
     /**
@@ -202,6 +202,7 @@ public class DigPathfinder {
             }
             current = next;
         }
+       // System.out.println(out);
         out.add(current);
         return out;
     }

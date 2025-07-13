@@ -129,13 +129,16 @@ public class DigNavGoal extends Goal {
             }
         }else {
            // System.out.println(Arrays.toString(build) + "||||" + Arrays.toString(dig));
-            boolean res = mob.getNavigation().moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.0);
-          //  System.out.println(mob.position().distanceToSqr(pos.getCenter()));
+            if (!mob.getNavigation().isInProgress())
+                mob.getNavigation().moveTo(pos.getX(), pos.getY(), pos.getZ(), 1.0);
+            System.out.println(mob.position().distanceToSqr(pos.getCenter()));
             double distSqr = mob.position().distanceToSqr(pos.getCenter());
             if (mob.position().distanceToSqr(prevPos) < MAX_STUCK_THRESHHOLD){
+                mob.getMoveControl().setWantedPosition(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.0f);
                 stuck++;
             }else stuck = 0;
-            if (distSqr < 2.1) {
+            if (mob.blockPosition().equals(pos)) {
+
                 stepIndex++;
                 moveFlag = false;
                 stuck = 0;
@@ -143,6 +146,7 @@ public class DigNavGoal extends Goal {
         }
         if (stuck >= MAX_STUCK_TIME){
             System.out.println("RECALCULATING PATH");
+            System.out.println("STUCK ON " + pos + ", node-type: " + current.type());
             recalcPath();
             stuck = 0;
         }
